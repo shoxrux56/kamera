@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hujjat Skaneri</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Skaner">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            height: 100%;
+            overscroll-behavior: none;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 14px;
+            padding-bottom: max(14px, env(safe-area-inset-bottom));
+        }
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex: 1;
+        }
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .screen-title {
+            font-size: 19px;
+            font-weight: 700;
+            color: #38bdf8;
+        }
+        .counter-badge {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #38bdf8;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+
+        .camera-wrap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px solid #334155;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .camera-error {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            font-size: 14px;
+            color: #f87171;
+            background: #1e293b;
+        }
+        .flash {
+            position: absolute;
+            inset: 0;
+            background: #fff;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .flash.on {
+            opacity: 0.85;
+            transition: opacity 0.25s ease-out;
+        }
+
+        .shutter-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 0;
+        }
+        .shutter-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: #fff;
+            border: 5px solid #2563eb;
+            cursor: pointer;
+            padding: 0;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+        }
+        .shutter-btn:active { transform: scale(0.92); }
+
+        .gallery-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            max-height: 22vh;
+            overflow-y: auto;
+        }
+        .gallery.empty { display: none; }
+        .thumb {
+            position: relative;
+            aspect-ratio: 3 / 4;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0b0f19;
+            border: 1px solid #334155;
+        }
+        .thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .thumb .del-btn {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.85);
+            color: #f87171;
+            border: 1px solid #f87171;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            cursor: pointer;
+        }
+        .thumb .idx-badge {
+            position: absolute;
+            bottom: 3px;
+            left: 3px;
+            background: rgba(15, 23, 42, 0.85);
+            color: #94a3b8;
+            font-size: 9px;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 5px;
+        }
+
+        .btn-row {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        button.action-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        button.action-btn:active { opacity: 0.8; transform: scale(0.98); }
+        .btn-telegram { background-color: #0284c7; color: white; display: none; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3); }
+        .btn-clear {
+            background-color: transparent;
+            color: #f87171;
+            border: 1px solid #7f1d1d;
+            display: none;
+            padding: 11px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="header-row">
+            <div class="screen-title">Hujjat Skaneri</div>
+            <div class="counter-badge" id="counterBadge">Jami rasmlar: 0 ta</div>
+        </div>
+
+        <div class="camera-wrap">
+            <video id="video" autoplay playsinline muted></video>
+            <div class="flash" id="flash"></div>
+            <div class="camera-error" id="cameraError">
+                Kameraga ruxsat berilmadi yoki kamera topilmadi.<br>Brauzer sozlamalaridan kamera ruxsatini yoqing.
+            </div>
+        </div>
+
+        <div class="shutter-row">
+            <button class="shutter-btn" id="shutterBtn" aria-label="Suratga olish"></button>
+        </div>
+
+        <div class="gallery-section">
+            <div class="gallery empty" id="gallery"></div>
+        </div>
+
+        <div class="btn-row">
+            <button class="action-btn btn-telegram" id="tgBtn">✈️ Telegramga Yuborish (<span id="tgCount">0</span>)</button>
+            <button class="action-btn btn-clear" id="clearBtn">🗑️ Barchasini tozalash</button>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        let images = [];      // { id, file, url }
+        let idCounter = 0;
+        let stream = null;
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const cameraError = document.getElementById('cameraError');
+        const flashEl = document.getElementById('flash');
+        const shutterBtn = document.getElementById('shutterBtn');
+        const galleryEl = document.getElementById('gallery');
+        const counterBadge = document.getElementById('counterBadge');
+        const tgBtn = document.getElementById('tgBtn');
+        const tgCount = document.getElementById('tgCount');
+        const clearBtn = document.getElementById('clearBtn');
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                cameraError.style.display = 'none';
+            } catch (err) {
+                console.log('Kamera xatosi:', err);
+                cameraError.style.display = 'flex';
+            }
+        }
+        startCamera();
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (stream) stream.getTracks().forEach(t => t.stop());
+            } else {
+                startCamera();
+            }
+        });
+
+        function capturePhoto() {
+            if (!stream || !video.videoWidth) return;
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            flashEl.classList.add('on');
+            setTimeout(() => flashEl.classList.remove('on'), 120);
+            if (navigator.vibrate) navigator.vibrate(30);
+
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const file = new File([blob], `hujjat_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                const item = {
+                    id: ++idCounter,
+                    file: file,
+                    url: URL.createObjectURL(blob)
+                };
+                images.push(item);
+                renderGallery();
+            }, 'image/jpeg', 0.92);
+        }
+        shutterBtn.addEventListener('click', capturePhoto);
+
+        function removeImage(id) {
+            const item = images.find(i => i.id === id);
+            if (item) URL.revokeObjectURL(item.url);
+            images = images.filter(i => i.id !== id);
+            renderGallery();
+        }
+
+        function clearAll() {
+            if (images.length === 0) return;
+            if (!confirm(`Haqiqatan ham barcha ${images.length} ta rasmni o'chirmoqchimisiz?`)) return;
+            images.forEach(i => URL.revokeObjectURL(i.url));
+            images = [];
+            renderGallery();
+        }
+        clearBtn.addEventListener('click', clearAll);
+
+        function renderGallery() {
+            const count = images.length;
+
+            counterBadge.textContent = `Jami rasmlar: ${count} ta`;
+            tgCount.textContent = count;
+            tgBtn.style.display = count > 0 ? 'block' : 'none';
+            clearBtn.style.display = count > 0 ? 'block' : 'none';
+            galleryEl.classList.toggle('empty', count === 0);
+
+            galleryEl.innerHTML = '';
+            images.forEach((item, index) => {
+                const thumb = document.createElement('div');
+                thumb.className = 'thumb';
+
+                const img = document.createElement('img');
+                img.src = item.url;
+                img.alt = `Hujjat ${index + 1}`;
+
+                const idxBadge = document.createElement('div');
+                idxBadge.className = 'idx-badge';
+                idxBadge.textContent = `${index + 1}`;
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'del-btn';
+                delBtn.textContent = '✕';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeImage(item.id);
+                });
+
+                thumb.appendChild(img);
+                thumb.appendChild(idxBadge);
+                thumb.appendChild(delBtn);
+                galleryEl.appendChild(thumb);
+            });
+
+            galleryEl.scrollTop = galleryEl.scrollHeight;
+        }
+
+        async function shareToTelegram() {
+            if (images.length === 0) return;
+
+            const files = images.map(i => i.file);
+            const shareDataFull = {
+                files: files,
+                title: 'Skanerlangan Hujjatlar',
+                text: `${files.length} ta hujjat`
+            };
+
+            if (navigator.share && navigator.canShare && navigator.canShare(shareDataFull)) {
+                try {
+                    await navigator.share(shareDataFull);
+                } catch (err) {
+                    console.log('Ulashish bekor qilindi yoki xatolik:', err);
+                }
+                return;
+            }
+
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: files })) {
+                try {
+                    await navigator.share({ files: files });
+                } catch (err) {
+                    console.log('Ulashish xatosi:', err);
+                }
+                return;
+            }
+
+            alert("Sizning qurilmangiz bir vaqtda bir nechta faylni ulashishni qo'llab-quvvatlamaydi.");
+        }
+        tgBtn.addEventListener('click', shareToTelegram);
+    </script>
+
+</body>
+</html>

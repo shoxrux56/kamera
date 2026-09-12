@@ -3,755 +3,468 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Skaner — hujjatni avtomatik kesib olish</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<title>Hujjat skaneri</title>
 <style>
   :root{
-    --bg:#0B0D10;
-    --panel:#14171B;
-    --panel-edge:#22262B;
-    --paper:#F8F6F0;
-    --paper-edge:#E4E0D6;
-    --accent:#29D3C0;
-    --accent-dim:#1A8F84;
-    --ink:#F2F1ED;
-    --ink-dim:#8B9096;
-    --danger:#E8615A;
-    --radius:18px;
+    --ink:#0d1210;
+    --panel:#121a17;
+    --line:#2a3a34;
+    --accent:#4ee6a8;
+    --accent-dim:#2a6b52;
+    --warn:#e6c34e;
+    --text:#eef5f1;
+    --text-dim:#9fb3ac;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{height:100%;}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--ink);
-    font-family:'Manrope', system-ui, sans-serif;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    min-height:100vh;
+  html,body{
+    margin:0; padding:0; height:100%; background:var(--ink); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     overflow:hidden;
   }
   #app{
-    width:100%;
-    max-width:460px;
-    height:100vh;
-    max-height:900px;
+    position:fixed; inset:0; display:flex; flex-direction:column;
+  }
+  header{
+    padding:14px 18px 10px;
+    display:flex; align-items:baseline; justify-content:space-between;
+    background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0));
+    position:absolute; top:0; left:0; right:0; z-index:5;
+  }
+  header h1{
+    font-size:17px; font-weight:600; margin:0; letter-spacing:.2px;
+  }
+  #statusPill{
+    font-size:12.5px; padding:5px 11px; border-radius:20px;
+    background:rgba(18,26,23,.85); border:1px solid var(--line);
+    color:var(--text-dim); transition:color .2s, border-color .2s;
+  }
+  #statusPill.found{ color:var(--accent); border-color:var(--accent-dim); }
+  #statusPill.blurry{ color:var(--warn); border-color:#6b5f2a; }
+
+  #stage{
+    position:relative; flex:1; display:flex; align-items:center; justify-content:center;
+    background:#000; overflow:hidden;
+  }
+  #camWrap{ position:relative; width:100%; line-height:0; }
+  video, #overlay, #resultCanvas{ width:100%; height:auto; display:block; }
+  #overlay{ position:absolute; top:0; left:0; pointer-events:none; }
+
+  #resultScreen{
+    position:fixed; inset:0; background:var(--ink); z-index:20;
+    display:none; flex-direction:column;
+  }
+  #resultScreen.show{ display:flex; }
+  #resultStage{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    padding:18px; overflow:auto; background:#050706;
+  }
+  #resultCanvas{ max-width:100%; max-height:100%; width:auto; border-radius:4px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5); }
+
+  footer{
+    padding:18px 18px 26px; display:flex; gap:12px; align-items:center; justify-content:center;
+    background:linear-gradient(0deg, rgba(0,0,0,.6), rgba(0,0,0,0));
+    position:absolute; bottom:0; left:0; right:0; z-index:5;
+  }
+  .resultFooter{
+    position:static; background:var(--panel); border-top:1px solid var(--line);
+    padding:16px 18px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  button{
+    font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none;
+  }
+  #shutterBtn{
+    width:70px; height:70px; border-radius:50%;
+    background:var(--text); border:4px solid rgba(255,255,255,.35);
     position:relative;
-    background:var(--panel);
-    display:flex;
-    flex-direction:column;
-    overflow:hidden;
   }
-  @media (min-width:520px){
-    #app{
-      height:860px;
-      border-radius:28px;
-      border:1px solid var(--panel-edge);
-      box-shadow:0 40px 100px rgba(0,0,0,.5);
-    }
+  #shutterBtn::after{
+    content:""; position:absolute; inset:6px; border-radius:50%;
+    background:var(--text);
+  }
+  #shutterBtn:active{ transform:scale(.94); }
+  #shutterBtn.autoArmed{ border-color:var(--accent); }
+
+  .sideBtn{
+    width:46px; height:46px; border-radius:50%;
+    background:rgba(18,26,23,.85); border:1px solid var(--line);
+    color:var(--text); font-size:19px; display:flex; align-items:center; justify-content:center;
+  }
+  .sideBtn.on{ color:var(--accent); border-color:var(--accent-dim); }
+
+  .rowCenter{ display:flex; align-items:center; gap:22px; }
+
+  .pillBtn{
+    flex:1; padding:13px 16px; border-radius:10px; font-size:15px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .pillBtn.primary{ background:var(--accent); color:#08130f; }
+  .pillBtn.secondary{ background:transparent; color:var(--text); border:1px solid var(--line); }
+
+  #hint{
+    position:absolute; left:0; right:0; bottom:112px; text-align:center; z-index:5;
+    font-size:12.5px; color:var(--text-dim); padding:0 30px; pointer-events:none;
   }
 
-  .topbar{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:16px 18px 10px;
-    z-index:5;
-  }
-  .brand{
-    font-weight:800;
-    font-size:16px;
-    letter-spacing:-0.01em;
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);}
-  .hint{
-    font-size:12.5px;
-    color:var(--ink-dim);
-    font-weight:500;
-  }
-
-  .screen{
-    flex:1;
-    display:none;
-    flex-direction:column;
-    min-height:0;
-    position:relative;
-  }
-  .screen.active{display:flex;}
-
-  /* ---------- CAMERA SCREEN ---------- */
-  .viewfinder-wrap{
-    position:relative;
-    flex:1;
-    margin:0 14px 14px;
-    border-radius:16px;
-    overflow:hidden;
-    background:#000;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  }
-  #video, #overlay{
-    position:absolute;
-    top:0; left:0;
-    width:100%;
-    height:100%;
-    object-fit:cover;
-  }
-  #video{background:#000;}
-  .cam-fallback{
-    position:absolute;
-    inset:0;
-    display:none;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:14px;
-    text-align:center;
-    padding:0 28px;
-    color:var(--ink-dim);
-    font-size:14px;
-    line-height:1.5;
-  }
-  .cam-fallback.show{display:flex;}
-  .status-chip{
-    position:absolute;
-    top:12px; left:50%;
-    transform:translateX(-50%);
-    background:rgba(10,12,14,.65);
-    backdrop-filter:blur(6px);
-    border:1px solid rgba(255,255,255,.08);
-    padding:6px 14px;
-    border-radius:100px;
-    font-size:12.5px;
-    font-weight:600;
-    color:var(--ink-dim);
-    display:flex;
-    align-items:center;
-    gap:7px;
-    transition:color .2s, border-color .2s;
-    z-index:4;
-  }
-  .status-chip .led{width:7px;height:7px;border-radius:50%;background:var(--ink-dim); transition:background .2s;}
-  .status-chip.locked{color:var(--accent); border-color:rgba(41,211,192,.35);}
-  .status-chip.locked .led{background:var(--accent); box-shadow:0 0 8px var(--accent);}
-
-  .controls{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:6px 26px 26px;
-  }
-  .side-btn{
-    width:48px; height:48px;
-    border-radius:50%;
-    border:1px solid var(--panel-edge);
-    background:#1B1F24;
-    color:var(--ink-dim);
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer;
-  }
-  .shutter{
-    width:74px; height:74px;
-    border-radius:50%;
-    background:var(--ink);
-    border:5px solid rgba(255,255,255,.15);
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer;
-    transition:transform .1s;
-  }
-  .shutter:active{transform:scale(.92);}
-  .shutter::after{
-    content:'';
-    width:58px; height:58px;
-    border-radius:50%;
+  #permScreen, #loadingScreen{
+    position:absolute; inset:0; z-index:30; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px; padding:30px; text-align:center;
     background:var(--ink);
   }
-  #fileInput{display:none;}
+  #permScreen p, #loadingScreen p{ color:var(--text-dim); font-size:14px; max-width:280px; line-height:1.5; margin:0; }
+  .spinner{
+    width:34px; height:34px; border-radius:50%; border:3px solid var(--line);
+    border-top-color:var(--accent); animation:spin 1s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  #permScreen button{ margin-top:6px; padding:12px 26px; border-radius:10px; background:var(--accent); color:#08130f; font-weight:600; font-size:14.5px; }
 
-  /* ---------- REVIEW SCREEN ---------- */
-  .review-canvas-wrap{
-    flex:1;
-    margin:14px;
-    border-radius:16px;
-    background:#000;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    position:relative;
-    overflow:hidden;
-    touch-action:none;
+  #flash{
+    position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:40;
   }
-  #reviewCanvas{max-width:100%; max-height:100%;}
-  .review-help{
-    text-align:center;
-    color:var(--ink-dim);
-    font-size:13px;
-    padding:0 30px 8px;
-  }
-  .review-actions, .result-actions{
-    display:flex;
-    gap:10px;
-    padding:10px 18px 24px;
-  }
-  .btn{
-    flex:1;
-    padding:15px 16px;
-    border-radius:14px;
-    border:none;
-    font-family:inherit;
-    font-weight:700;
-    font-size:14.5px;
-    cursor:pointer;
-    display:flex; align-items:center; justify-content:center; gap:8px;
-  }
-  .btn-ghost{background:#1B1F24; color:var(--ink); border:1px solid var(--panel-edge);}
-  .btn-primary{background:var(--accent); color:#04211E;}
-  .btn-primary:active{background:var(--accent-dim);}
-
-  /* ---------- RESULT SCREEN ---------- */
-  .result-canvas-wrap{
-    flex:1;
-    margin:14px 14px 4px;
-    border-radius:16px;
-    background:repeating-conic-gradient(#1c1f23 0% 25%, #17191d 0% 50%) 0 0/18px 18px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    overflow:hidden;
-    padding:12px;
-  }
-  #resultCanvas{
-    max-width:100%;
-    max-height:100%;
-    background:var(--paper);
-    box-shadow:0 12px 30px rgba(0,0,0,.45);
-  }
-  .modes{
-    display:flex;
-    gap:8px;
-    padding:14px 18px 0;
-  }
-  .mode-chip{
-    flex:1;
-    text-align:center;
-    padding:10px 8px;
-    border-radius:11px;
-    background:#1B1F24;
-    border:1px solid var(--panel-edge);
-    color:var(--ink-dim);
-    font-size:12.5px;
-    font-weight:700;
-    cursor:pointer;
-  }
-  .mode-chip.active{
-    background:rgba(41,211,192,.12);
-    border-color:var(--accent);
-    color:var(--accent);
-  }
-
-  .toast{
-    position:absolute;
-    bottom:100px; left:50%;
-    transform:translateX(-50%) translateY(10px);
-    background:var(--ink);
-    color:#0B0D10;
-    padding:10px 18px;
-    border-radius:100px;
-    font-size:13px;
-    font-weight:700;
-    opacity:0;
-    pointer-events:none;
-    transition:opacity .2s, transform .2s;
-    z-index:20;
-    white-space:nowrap;
-  }
-  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #flash.go{ animation:flash .35s ease-out; }
+  @keyframes flash{ 0%{opacity:.85;} 100%{opacity:0;} }
 </style>
 </head>
 <body>
-
 <div id="app">
 
-  <!-- ============ CAMERA SCREEN ============ -->
-  <div class="screen active" id="screen-camera">
-    <div class="topbar">
-      <div class="brand"><span class="dot"></span>Skaner</div>
-      <div class="hint" id="loadingHint">Model yuklanmoqda…</div>
-    </div>
-    <div class="viewfinder-wrap">
+  <div id="loadingScreen">
+    <div class="spinner"></div>
+    <p>Tayyorlanmoqda…</p>
+  </div>
+
+  <div id="permScreen" style="display:none;">
+    <p>Kamera uchun ruxsat kerak. Hujjatni skaner qilish uchun kameraga ruxsat bering.</p>
+    <button id="retryPermBtn">Qayta urinish</button>
+  </div>
+
+  <header>
+    <h1>Hujjat skaneri</h1>
+    <div id="statusPill">Qidirilmoqda…</div>
+  </header>
+
+  <div id="stage">
+    <div id="camWrap">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
-      <div class="status-chip" id="statusChip"><span class="led"></span><span id="statusText">Hujjat qidirilmoqda</span></div>
-      <div class="cam-fallback" id="camFallback">
-        <div>Kamera ochilmadi. Fayldan rasim tanlang yoki brauzer sozlamalaridan kameraga ruxsat bering.</div>
-      </div>
     </div>
-    <div class="controls">
-      <div class="side-btn" id="galleryBtn" title="Fayldan tanlash">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><circle cx="8.5" cy="10" r="1.5" fill="currentColor"/><path d="M21 15l-5.5-5-9.5 9" stroke="currentColor" stroke-width="1.8"/></svg>
-      </div>
-      <div class="shutter" id="shutterBtn"></div>
-      <div class="side-btn" id="flipBtn" title="Kamerani almashtirish">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 8a8 8 0 0 1 13.5-4.5M20 16a8 8 0 0 1-13.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17.5 2.5v4.5H13M6.5 21.5V17H11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-    </div>
-    <input type="file" id="fileInput" accept="image/*" capture="environment">
+    <div id="hint">Hujjatni butunlay kadr ichiga joylashtiring — fon avtomatik kesib tashlanadi</div>
   </div>
 
-  <!-- ============ REVIEW SCREEN (drag corners) ============ -->
-  <div class="screen" id="screen-review">
-    <div class="topbar">
-      <div class="brand"><span class="dot"></span>Chegaralarni tekshiring</div>
+  <footer>
+    <button class="sideBtn" id="autoBtn" title="Avto-suratga olish">A</button>
+    <div class="rowCenter">
+      <button id="shutterBtn"></button>
     </div>
-    <div class="review-canvas-wrap">
-      <canvas id="reviewCanvas"></canvas>
-    </div>
-    <div class="review-help">Burchaklar noto'g'ri bo'lsa, ularni ushlab suring</div>
-    <div class="review-actions">
-      <button class="btn btn-ghost" id="retakeBtn">Qayta olish</button>
-      <button class="btn btn-primary" id="cropBtn">Kesib olish</button>
-    </div>
-  </div>
-
-  <!-- ============ RESULT SCREEN ============ -->
-  <div class="screen" id="screen-result">
-    <div class="topbar">
-      <div class="brand"><span class="dot"></span>Tayyor</div>
-    </div>
-    <div class="result-canvas-wrap">
-      <canvas id="resultCanvas"></canvas>
-    </div>
-    <div class="modes">
-      <div class="mode-chip active" data-mode="bw">Oq-qora</div>
-      <div class="mode-chip" data-mode="color">Rangli</div>
-      <div class="mode-chip" data-mode="original">Original</div>
-    </div>
-    <div class="result-actions">
-      <button class="btn btn-ghost" id="newScanBtn">Qayta olish</button>
-      <button class="btn btn-primary" id="downloadBtn">Yuklab olish</button>
-    </div>
-  </div>
-
-  <div class="toast" id="toast"></div>
+    <button class="sideBtn" id="torchBtn" title="Chiroq" style="visibility:hidden;">⚡</button>
+  </footer>
 </div>
 
-<script src="https://docs.opencv.org/4.9.0/opencv.js"></script>
+<div id="resultScreen">
+  <div id="resultStage">
+    <canvas id="resultCanvas"></canvas>
+  </div>
+  <div class="rowCenter resultFooter">
+    <button class="pillBtn secondary" id="retakeBtn">Qayta olish</button>
+    <button class="pillBtn primary" id="saveBtn">Saqlash</button>
+  </div>
+</div>
+
+<div id="flash"></div>
+
+<canvas id="procCanvas" style="display:none;"></canvas>
+<canvas id="fullCanvas" style="display:none;"></canvas>
+
+<script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="onOpenCvReady()" onerror="onOpenCvError()"></script>
+
 <script>
 (function(){
-  "use strict";
-
-  // ---------- state ----------
-  let cvReady = false;
-  let stream = null;
-  let currentFacing = 'environment';
-  let detectLoopId = null;
-  let lastDetectTs = 0;
-  let lockedFrames = 0;
-
-  let capturedMat = null;        // full-res RGBA cv.Mat of the frozen photo
-  let reviewCorners = null;      // 4 points in capturedMat coordinate space
-  let reviewScale = 1;           // display px -> image px factor on review canvas
-  let draggingIdx = -1;
-  let warpedMat = null;          // perspective-corrected RGBA result
-  let currentMode = 'bw';
-
-  const $ = (id) => document.getElementById(id);
-  const video = $('video');
-  const overlay = $('overlay');
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
   const octx = overlay.getContext('2d');
-  const statusChip = $('statusChip');
-  const statusText = $('statusText');
-  const loadingHint = $('loadingHint');
-  const camFallback = $('camFallback');
-  const toastEl = $('toast');
+  const procCanvas = document.getElementById('procCanvas');
+  const fullCanvas = document.getElementById('fullCanvas');
+  const statusPill = document.getElementById('statusPill');
+  const shutterBtn = document.getElementById('shutterBtn');
+  const autoBtn = document.getElementById('autoBtn');
+  const resultScreen = document.getElementById('resultScreen');
+  const resultCanvas = document.getElementById('resultCanvas');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const loadingScreen = document.getElementById('loadingScreen');
+  const permScreen = document.getElementById('permScreen');
+  const retryPermBtn = document.getElementById('retryPermBtn');
+  const flashEl = document.getElementById('flash');
 
-  function toast(msg){
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(()=>toastEl.classList.remove('show'), 1800);
+  const PROC_WIDTH = 320;
+  let cvReady = false;
+  let camReady = false;
+  let lastQuad = null;        // 4 points in full-res video coordinates
+  let stableCount = 0;
+  let lastStableQuad = null;
+  let autoCapture = false;
+  let rafId = null;
+  let busyCapturing = false;
+
+  function onOpenCvError(){
+    statusPill.textContent = 'Xato: OpenCV yuklanmadi';
+  }
+  window.onOpenCvError = onOpenCvError;
+
+  window.onOpenCvReady = function(){
+    if (typeof cv === 'undefined') { onOpenCvError(); return; }
+    if (cv.getBuildInformation) { cvReady = true; startIfReady(); }
+    else { cv['onRuntimeInitialized'] = function(){ cvReady = true; startIfReady(); }; }
+  };
+
+  function startIfReady(){
+    if (cvReady) initCamera();
   }
 
-  function showScreen(name){
-    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-    $('screen-'+name).classList.add('active');
-  }
-
-  // ---------- OpenCV load ----------
-  window.onOpenCvReadyPoll = setInterval(()=>{
-    if (window.cv && cv.Mat){
-      clearInterval(window.onOpenCvReadyPoll);
-      cvReady = true;
-      loadingHint.textContent = 'Tayyor';
-      setTimeout(()=>{ loadingHint.style.display='none'; }, 1200);
-      startCamera();
-    }
-  }, 150);
-
-  // ---------- camera ----------
-  async function startCamera(){
+  async function initCamera(){
     try{
-      if (stream) stream.getTracks().forEach(t=>t.stop());
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: currentFacing }, width:{ideal:1920}, height:{ideal:1080} },
-        audio:false
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
       });
       video.srcObject = stream;
-      camFallback.classList.remove('show');
+      await new Promise(res => { video.onloadedmetadata = res; });
       await video.play();
-      video.addEventListener('loadedmetadata', sizeOverlay, {once:true});
-      if (video.videoWidth) sizeOverlay();
-      runDetectLoop();
+      camReady = true;
+      loadingScreen.style.display = 'none';
+      permScreen.style.display = 'none';
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+      procCanvas.width = PROC_WIDTH;
+      procCanvas.height = Math.round(PROC_WIDTH * video.videoHeight / video.videoWidth);
+      fullCanvas.width = video.videoWidth;
+      fullCanvas.height = video.videoHeight;
+      loop();
     }catch(err){
-      camFallback.classList.add('show');
-      statusText.textContent = 'Kamera yo\'q';
+      loadingScreen.style.display = 'none';
+      permScreen.style.display = 'flex';
     }
   }
 
-  function sizeOverlay(){
-    overlay.width = video.videoWidth;
-    overlay.height = video.videoHeight;
-  }
-
-  $('flipBtn').addEventListener('click', ()=>{
-    currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
-    startCamera();
+  retryPermBtn.addEventListener('click', () => {
+    permScreen.style.display = 'none';
+    loadingScreen.style.display = 'flex';
+    initCamera();
   });
 
-  // ---------- live detection loop ----------
-  function runDetectLoop(){
-    cancelAnimationFrame(detectLoopId);
-    const tick = (ts)=>{
-      detectLoopId = requestAnimationFrame(tick);
-      if (!cvReady || video.readyState < 2) return;
-      if (ts - lastDetectTs < 180) return; // throttle ~5-6 fps of detection
-      lastDetectTs = ts;
-      detectAndDraw();
-    };
-    detectLoopId = requestAnimationFrame(tick);
-  }
-
-  function detectAndDraw(){
-    const vw = video.videoWidth, vh = video.videoHeight;
-    if (!vw || !vh) return;
-    const dw = 320;
-    const dh = Math.round(dw * vh / vw);
-    const dCanvas = detectAndDraw._c || (detectAndDraw._c = document.createElement('canvas'));
-    dCanvas.width = dw; dCanvas.height = dh;
-    const dctx = dCanvas.getContext('2d');
-    dctx.drawImage(video, 0, 0, dw, dh);
-
-    let src;
-    try{ src = cv.imread(dCanvas); } catch(e){ return; }
-    const quad = findDocumentQuad(src);
-    src.delete();
-
-    octx.clearRect(0,0,overlay.width, overlay.height);
-    if (quad){
-      lockedFrames = Math.min(lockedFrames+1, 30);
-      const scale = vw / dw;
-      const pts = quad.map(p => ({x:p.x*scale, y:p.y*scale}));
-      drawQuad(octx, pts, lockedFrames > 3);
-      setLocked(true);
-    } else {
-      lockedFrames = 0;
-      setLocked(false);
-    }
-  }
-
-  function setLocked(on){
-    statusChip.classList.toggle('locked', on);
-    statusText.textContent = on ? 'Hujjat topildi' : 'Hujjat qidirilmoqda';
-  }
-
-  function drawQuad(ctx, pts, strong){
-    ctx.save();
-    ctx.lineWidth = strong ? 4 : 2.5;
-    ctx.strokeStyle = strong ? 'rgba(41,211,192,0.95)' : 'rgba(255,255,255,0.55)';
-    ctx.fillStyle = strong ? 'rgba(41,211,192,0.12)' : 'rgba(255,255,255,0.04)';
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i=1;i<4;i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    if (strong){
-      ctx.fillStyle = 'rgba(41,211,192,0.95)';
-      pts.forEach(p=>{
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI*2);
-        ctx.fill();
-      });
-    }
-    ctx.restore();
-  }
-
-  // ---------- core CV: quad detection ----------
   function orderPoints(pts){
-    const s = pts.map(p=>p.x+p.y);
-    const d = pts.map(p=>p.y-p.x);
-    const tl = pts[s.indexOf(Math.min(...s))];
-    const br = pts[s.indexOf(Math.max(...s))];
-    const tr = pts[d.indexOf(Math.min(...d))];
-    const bl = pts[d.indexOf(Math.max(...d))];
+    // pts: array of {x,y} length 4 -> returns [tl,tr,br,bl]
+    let sum = pts.map(p => p.x + p.y);
+    let diff = pts.map(p => p.x - p.y);
+    const tl = pts[sum.indexOf(Math.min(...sum))];
+    const br = pts[sum.indexOf(Math.max(...sum))];
+    const tr = pts[diff.indexOf(Math.max(...diff))];
+    const bl = pts[diff.indexOf(Math.min(...diff))];
     return [tl,tr,br,bl];
   }
 
-  function findDocumentQuad(srcMat){
-    let gray=new cv.Mat(), blur=new cv.Mat(), edges=new cv.Mat(), dil=new cv.Mat();
-    let kernel = cv.Mat.ones(3,3, cv.CV_8U);
-    try{
-      cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
-      cv.Canny(blur, edges, 40, 120);
-      cv.dilate(edges, dil, kernel, new cv.Point(-1,-1), 1);
+  function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
-      cv.findContours(dil, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+  function quadsClose(a,b,tolPx){
+    if(!a || !b) return false;
+    for(let i=0;i<4;i++){ if(dist(a[i],b[i]) > tolPx) return false; }
+    return true;
+  }
 
-      const imgArea = srcMat.rows * srcMat.cols;
-      let bestApprox = null, bestArea = 0;
+  function detectQuad(){
+    const pctx = procCanvas.getContext('2d');
+    pctx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
+    const scale = video.videoWidth / procCanvas.width;
 
-      for (let i=0;i<contours.size();i++){
-        const cnt = contours.get(i);
-        const peri = cv.arcLength(cnt, true);
-        const approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02*peri, true);
-        if (approx.rows === 4 && cv.isContourConvex(approx)){
-          const area = Math.abs(cv.contourArea(approx));
-          if (area > bestArea && area > imgArea*0.12){
-            bestArea = area;
-            if (bestApprox) bestApprox.delete();
-            bestApprox = approx;
-          } else {
-            approx.delete();
-          }
+    let src = cv.imread(procCanvas);
+    let gray = new cv.Mat();
+    let blurred = new cv.Mat();
+    let edged = new cv.Mat();
+    let kernel = cv.Mat.ones(3,3,cv.CV_8U);
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
+    cv.Canny(blurred, edged, 50, 150);
+    cv.dilate(edged, edged, kernel, new cv.Point(-1,-1), 1);
+
+    cv.findContours(edged, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+    // Tiniqlik (fokus) testi — Laplacian dispersiyasi
+    let lap = new cv.Mat();
+    cv.Laplacian(gray, lap, cv.CV_64F);
+    let meanM = new cv.Mat(), stdM = new cv.Mat();
+    cv.meanStdDev(lap, meanM, stdM);
+    const sharpness = Math.pow(stdM.data64F[0], 2);
+    lap.delete(); meanM.delete(); stdM.delete();
+
+    let best = null;
+    let bestArea = 0;
+    const imgArea = procCanvas.width * procCanvas.height;
+
+    for(let i=0; i<contours.size(); i++){
+      const c = contours.get(i);
+      const peri = cv.arcLength(c, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(c, approx, 0.02*peri, true);
+      if(approx.rows === 4){
+        const area = Math.abs(cv.contourArea(approx));
+        if(area > imgArea*0.18 && area > bestArea && cv.isContourConvex(approx)){
+          bestArea = area;
+          if(best) best.delete();
+          best = approx;
         } else {
           approx.delete();
         }
-        cnt.delete();
+      } else {
+        approx.delete();
       }
-      contours.delete(); hierarchy.delete();
+      c.delete();
+    }
 
-      if (!bestApprox) return null;
+    let quad = null;
+    if(best){
       const pts = [];
-      for (let i=0;i<4;i++) pts.push({x:bestApprox.data32S[i*2], y:bestApprox.data32S[i*2+1]});
-      bestApprox.delete();
-      return orderPoints(pts);
-    } finally {
-      gray.delete(); blur.delete(); edges.delete(); dil.delete(); kernel.delete();
+      for(let i=0;i<4;i++){
+        pts.push({ x: best.data32S[i*2]*scale, y: best.data32S[i*2+1]*scale });
+      }
+      quad = orderPoints(pts);
+      best.delete();
     }
+
+    src.delete(); gray.delete(); blurred.delete(); edged.delete();
+    kernel.delete(); contours.delete(); hierarchy.delete();
+
+    return { quad, sharpness };
   }
 
-  // ---------- capture ----------
-  function captureFrameToMat(){
-    const vw = video.videoWidth, vh = video.videoHeight;
-    const c = document.createElement('canvas');
-    c.width = vw; c.height = vh;
-    c.getContext('2d').drawImage(video, 0, 0, vw, vh);
-    return cv.imread(c);
-  }
-
-  function loadFileToMat(file){
-    return new Promise((resolve)=>{
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = ()=>{
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        c.getContext('2d').drawImage(img,0,0);
-        URL.revokeObjectURL(url);
-        resolve(cv.imread(c));
-      };
-      img.src = url;
+  function drawOverlay(quad){
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(!quad) return;
+    octx.save();
+    octx.lineJoin = 'round';
+    octx.strokeStyle = 'rgba(78,230,168,0.95)';
+    octx.lineWidth = Math.max(3, overlay.width*0.006);
+    octx.beginPath();
+    octx.moveTo(quad[0].x, quad[0].y);
+    for(let i=1;i<4;i++) octx.lineTo(quad[i].x, quad[i].y);
+    octx.closePath();
+    octx.stroke();
+    octx.fillStyle = 'rgba(78,230,168,0.12)';
+    octx.fill();
+    const r = overlay.width*0.012;
+    octx.fillStyle = 'rgba(78,230,168,0.95)';
+    quad.forEach(p => {
+      octx.beginPath();
+      octx.arc(p.x, p.y, r, 0, Math.PI*2);
+      octx.fill();
     });
+    octx.restore();
   }
 
-  function goToReviewWithMat(mat){
-    if (capturedMat) capturedMat.delete();
-    capturedMat = mat;
-    const quad = findDocumentQuad(mat);
-    if (quad){
-      reviewCorners = quad;
+  let frameSkip = 0;
+  function loop(){
+    rafId = requestAnimationFrame(loop);
+    if(!camReady || busyCapturing) return;
+    frameSkip++;
+    if(frameSkip % 3 !== 0) return; // throttle detection ~ every 3rd frame
+
+    const { quad, sharpness } = detectQuad();
+    lastQuad = quad;
+    drawOverlay(quad);
+
+    const SHARPNESS_THRESHOLD = 18; // proc-canvas (320px) uchun sozlangan
+    const isSharp = sharpness >= SHARPNESS_THRESHOLD;
+
+    if(quad && isSharp){
+      statusPill.textContent = 'Hujjat topildi';
+      statusPill.classList.remove('blurry');
+      statusPill.classList.add('found');
+      if(autoCapture){
+        capture(); // topilgan va tiniq bo'lgan zahoti darhol suratga oladi
+      }
+    } else if(quad && !isSharp){
+      statusPill.textContent = 'Fokuslanmoqda…';
+      statusPill.classList.remove('found');
+      statusPill.classList.add('blurry');
     } else {
-      const w = mat.cols, h = mat.rows, m = 0.08;
-      reviewCorners = [
-        {x:w*m, y:h*m}, {x:w*(1-m), y:h*m},
-        {x:w*(1-m), y:h*(1-m)}, {x:w*m, y:h*(1-m)}
-      ];
-      toast('Chegaralar avtomatik topilmadi, qo\'lda to\'g\'irlang');
+      statusPill.textContent = 'Qidirilmoqda…';
+      statusPill.classList.remove('found');
+      statusPill.classList.remove('blurry');
     }
-    showScreen('review');
-    drawReviewCanvas();
   }
 
-  $('shutterBtn').addEventListener('click', ()=>{
-    if (!cvReady){ toast('Model hali yuklanmoqda…'); return; }
-    if (!video.videoWidth){ toast('Kamera tayyor emas'); return; }
-    const mat = captureFrameToMat();
-    goToReviewWithMat(mat);
-  });
+  function warpAndShow(quad){
+    const fctx = fullCanvas.getContext('2d');
+    fctx.drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
 
-  $('galleryBtn').addEventListener('click', ()=> $('fileInput').click());
-  $('fileInput').addEventListener('change', async (e)=>{
-    const file = e.target.files[0];
-    if (!file || !cvReady) return;
-    const mat = await loadFileToMat(file);
-    goToReviewWithMat(mat);
-    e.target.value = '';
-  });
+    const [tl,tr,br,bl] = quad;
+    const widthTop = dist(tl,tr);
+    const widthBottom = dist(bl,br);
+    const heightLeft = dist(tl,bl);
+    const heightRight = dist(tr,br);
+    const outW = Math.round(Math.max(widthTop, widthBottom));
+    const outH = Math.round(Math.max(heightLeft, heightRight));
 
-  // ---------- review screen: draggable corners ----------
-  const reviewCanvas = $('reviewCanvas');
-  const rctx = reviewCanvas.getContext('2d');
+    let src = cv.imread(fullCanvas);
+    let dst = new cv.Mat();
+    let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y
+    ]);
+    let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      0,0, outW,0, outW,outH, 0,outH
+    ]);
+    let M = cv.getPerspectiveTransform(srcTri, dstTri);
+    let dsize = new cv.Size(outW, outH);
+    cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
-  function drawReviewCanvas(){
-    if (!capturedMat) return;
-    const wrap = reviewCanvas.parentElement;
-    const maxW = wrap.clientWidth - 4, maxH = wrap.clientHeight - 4;
-    const iw = capturedMat.cols, ih = capturedMat.rows;
-    reviewScale = Math.min(maxW/iw, maxH/ih);
-    reviewCanvas.width = iw * reviewScale;
-    reviewCanvas.height = ih * reviewScale;
+    resultCanvas.width = outW;
+    resultCanvas.height = outH;
+    cv.imshow(resultCanvas, dst);
 
-    const tmp = document.createElement('canvas');
-    tmp.width = iw; tmp.height = ih;
-    cv.imshow(tmp, capturedMat);
-    rctx.drawImage(tmp, 0, 0, reviewCanvas.width, reviewCanvas.height);
-
-    const pts = reviewCorners.map(p=>({x:p.x*reviewScale, y:p.y*reviewScale}));
-    drawQuad(rctx, pts, true);
+    src.delete(); dst.delete(); srcTri.delete(); dstTri.delete(); M.delete();
   }
 
-  function reviewPointerPos(e){
-    const r = reviewCanvas.getBoundingClientRect();
-    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    return {x:cx, y:cy};
-  }
+  function capture(){
+    if(busyCapturing) return;
+    busyCapturing = true;
+    flashEl.classList.add('go');
+    setTimeout(() => flashEl.classList.remove('go'), 350);
 
-  function nearestCornerIdx(pos){
-    let idx=-1, best=28*28;
-    reviewCorners.forEach((p,i)=>{
-      const dx = p.x*reviewScale - pos.x, dy = p.y*reviewScale - pos.y;
-      const d2 = dx*dx+dy*dy;
-      if (d2 < best){ best=d2; idx=i; }
-    });
-    return idx;
-  }
-
-  reviewCanvas.addEventListener('pointerdown', (e)=>{
-    const pos = reviewPointerPos(e);
-    draggingIdx = nearestCornerIdx(pos);
-    reviewCanvas.setPointerCapture(e.pointerId);
-  });
-  reviewCanvas.addEventListener('pointermove', (e)=>{
-    if (draggingIdx < 0) return;
-    const pos = reviewPointerPos(e);
-    const iw = capturedMat.cols, ih = capturedMat.rows;
-    reviewCorners[draggingIdx] = {
-      x: Math.min(Math.max(pos.x/reviewScale, 0), iw),
-      y: Math.min(Math.max(pos.y/reviewScale, 0), ih)
-    };
-    drawReviewCanvas();
-  });
-  reviewCanvas.addEventListener('pointerup', ()=> draggingIdx = -1);
-  window.addEventListener('resize', ()=>{ if (document.getElementById('screen-review').classList.contains('active')) drawReviewCanvas(); });
-
-  $('retakeBtn').addEventListener('click', ()=>{
-    showScreen('camera');
-  });
-
-  $('cropBtn').addEventListener('click', ()=>{
-    if (warpedMat) warpedMat.delete();
-    warpedMat = warpDocument(capturedMat, reviewCorners);
-    showScreen('result');
-    renderResult();
-  });
-
-  // ---------- perspective warp ----------
-  function warpDocument(srcMat, corners){
-    const [tl,tr,br,bl] = corners;
-    const wA = Math.hypot(br.x-bl.x, br.y-bl.y);
-    const wB = Math.hypot(tr.x-tl.x, tr.y-tl.y);
-    const maxW = Math.max(wA, wB);
-    const hA = Math.hypot(tr.x-br.x, tr.y-br.y);
-    const hB = Math.hypot(tl.x-bl.x, tl.y-bl.y);
-    const maxH = Math.max(hA, hB);
-
-    const srcTri = cv.matFromArray(4,1,cv.CV_32FC2, [tl.x,tl.y, tr.x,tr.y, br.x,br.y, bl.x,bl.y]);
-    const dstTri = cv.matFromArray(4,1,cv.CV_32FC2, [0,0, maxW,0, maxW,maxH, 0,maxH]);
-    const M = cv.getPerspectiveTransform(srcTri, dstTri);
-    const dst = new cv.Mat();
-    cv.warpPerspective(srcMat, dst, M, new cv.Size(Math.round(maxW), Math.round(maxH)));
-    srcTri.delete(); dstTri.delete(); M.delete();
-    return dst;
-  }
-
-  // ---------- result screen: enhancement modes ----------
-  function enhance(mat, mode){
-    if (mode === 'original') return mat.clone();
-    if (mode === 'color'){
-      const out = new cv.Mat();
-      mat.convertTo(out, -1, 1.12, 8);
-      return out;
+    let quad = lastQuad;
+    if(!quad){
+      // fallback: use full frame as-is if no document detected
+      const w = video.videoWidth, h = video.videoHeight;
+      quad = [{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
     }
-    // bw scan look
-    const gray = new cv.Mat();
-    cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
-    const out = new cv.Mat();
-    cv.adaptiveThreshold(gray, out, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 15);
-    gray.delete();
-    return out;
+    warpAndShow(quad);
+    resultScreen.classList.add('show');
+    setTimeout(() => { busyCapturing = false; }, 600);
   }
 
-  function renderResult(){
-    if (!warpedMat) return;
-    const processed = enhance(warpedMat, currentMode);
-    const rc = $('resultCanvas');
-    const wrap = rc.parentElement;
-    const maxW = wrap.clientWidth - 24, maxH = wrap.clientHeight - 24;
-    const scale = Math.min(maxW/processed.cols, maxH/processed.rows, 1);
-    const full = document.createElement('canvas');
-    full.width = processed.cols; full.height = processed.rows;
-    cv.imshow(full, processed);
-    rc.width = processed.cols*scale; rc.height = processed.rows*scale;
-    rc.getContext('2d').drawImage(full, 0, 0, rc.width, rc.height);
-    processed.delete();
-  }
+  shutterBtn.addEventListener('click', capture);
 
-  document.querySelectorAll('.mode-chip').forEach(chip=>{
-    chip.addEventListener('click', ()=>{
-      document.querySelectorAll('.mode-chip').forEach(c=>c.classList.remove('active'));
-      chip.classList.add('active');
-      currentMode = chip.dataset.mode;
-      renderResult();
-    });
+  autoBtn.addEventListener('click', () => {
+    autoCapture = !autoCapture;
+    autoBtn.classList.toggle('on', autoCapture);
+    shutterBtn.classList.toggle('autoArmed', autoCapture);
+    stableCount = 0;
   });
 
-  $('newScanBtn').addEventListener('click', ()=> showScreen('camera'));
+  retakeBtn.addEventListener('click', () => {
+    resultScreen.classList.remove('show');
+    stableCount = 0;
+  });
 
-  $('downloadBtn').addEventListener('click', ()=>{
-    if (!warpedMat) return;
-    const processed = enhance(warpedMat, currentMode);
-    const full = document.createElement('canvas');
-    full.width = processed.cols; full.height = processed.rows;
-    cv.imshow(full, processed);
-    processed.delete();
-    full.toBlob((blob)=>{
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'skan-' + Date.now() + '.jpg';
-      a.click();
-      toast('Yuklab olindi');
-    }, 'image/jpeg', 0.92);
+  saveBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g,'-');
+    link.download = 'hujjat-' + ts + '.png';
+    link.href = resultCanvas.toDataURL('image/png');
+    link.click();
   });
 
 })();

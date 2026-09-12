@@ -150,7 +150,7 @@
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
     </div>
-    <div id="hint">Hujjatni kadr ichiga joylashtiring — tiniq bo'lgan zahoti avtomatik suratga oladi</div>
+    <div id="hint">Hujjatni to'liq kadr ichiga sig'diring (chetlari kesilmasin) — tiniq bo'lgan zahoti bitta marta avtomatik suratga oladi</div>
   </div>
 
   <footer>
@@ -307,6 +307,7 @@
     let best = null;
     let bestArea = 0;
     const imgArea = procCanvas.width * procCanvas.height;
+    const edgeMargin = Math.max(2, Math.round(procCanvas.width * 0.008));
 
     for(let i=0; i<contours.size(); i++){
       const c = contours.get(i);
@@ -315,7 +316,17 @@
       cv.approxPolyDP(c, approx, 0.02*peri, true);
       if(approx.rows === 4){
         const area = Math.abs(cv.contourArea(approx));
-        if(area > imgArea*0.18 && area > bestArea && cv.isContourConvex(approx)){
+        let touchesEdge = false;
+        for(let k=0; k<4; k++){
+          const px = approx.data32S[k*2];
+          const py = approx.data32S[k*2+1];
+          if(px <= edgeMargin || py <= edgeMargin ||
+             px >= procCanvas.width - edgeMargin || py >= procCanvas.height - edgeMargin){
+            touchesEdge = true; break;
+          }
+        }
+        // touchesEdge bo'lsa — hujjat kadrdan chetga chiqib ketgan/kesilgan degani, rad etamiz
+        if(!touchesEdge && area > imgArea*0.18 && area > bestArea && cv.isContourConvex(approx)){
           bestArea = area;
           if(best) best.delete();
           best = approx;

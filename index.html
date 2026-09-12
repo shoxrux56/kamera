@@ -445,7 +445,8 @@
     }
     warpAndShow(quad);
     resultScreen.classList.add('show');
-    setTimeout(() => { busyCapturing = false; }, 600);
+    // busyCapturing "Qayta olish" bosilmaguncha true bo'lib qoladi —
+    // shu tufayli orqa fonda qayta-qayta suratga olib ketmaydi.
   }
 
   shutterBtn.addEventListener('click', capture);
@@ -460,6 +461,9 @@
   retakeBtn.addEventListener('click', () => {
     resultScreen.classList.remove('show');
     stableCount = 0;
+    lastQuad = null;
+    lastStableQuad = null;
+    busyCapturing = false; // endi orqa kamera ko'rinishiga qaytdik — qidiruv qayta boshlanadi
   });
 
   saveBtn.addEventListener('click', () => {

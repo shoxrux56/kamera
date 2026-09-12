@@ -276,6 +276,27 @@
     return true;
   }
 
+  function angleAt(p0,p1,p2){
+    // p1 dagi burchak (gradus)
+    const v1x=p0.x-p1.x, v1y=p0.y-p1.y, v2x=p2.x-p1.x, v2y=p2.y-p1.y;
+    const dot=v1x*v2x+v1y*v2y;
+    const m1=Math.hypot(v1x,v1y), m2=Math.hypot(v2x,v2y);
+    if(m1===0||m2===0) return 0;
+    let cosA = dot/(m1*m2);
+    cosA = Math.max(-1, Math.min(1, cosA));
+    return Math.acos(cosA) * 180/Math.PI;
+  }
+
+  function isRectangleLike(pts){
+    // pts: 4 ta {x,y}, ketma-ket burchaklar bo'ylab
+    for(let i=0;i<4;i++){
+      const p0 = pts[(i+3)%4], p1 = pts[i], p2 = pts[(i+1)%4];
+      const a = angleAt(p0,p1,p2);
+      if(a < 45 || a > 135) return false;
+    }
+    return true;
+  }
+
   function detectQuad(){
     const pctx = procCanvas.getContext('2d');
     pctx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
@@ -291,8 +312,8 @@
 
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
-    cv.Canny(blurred, edged, 50, 150);
-    cv.dilate(edged, edged, kernel, new cv.Point(-1,-1), 1);
+    cv.Canny(blurred, edged, 30, 120);
+    cv.morphologyEx(edged, edged, cv.MORPH_CLOSE, kernel);
 
     cv.findContours(edged, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
@@ -307,7 +328,7 @@
     let best = null;
     let bestArea = 0;
     const imgArea = procCanvas.width * procCanvas.height;
-    const edgeMargin = Math.max(2, Math.round(procCanvas.width * 0.008));
+    const edgeMargin = 2;
 
     for(let i=0; i<contours.size(); i++){
       const c = contours.get(i);
@@ -317,16 +338,23 @@
       if(approx.rows === 4){
         const area = Math.abs(cv.contourArea(approx));
         let touchesEdge = false;
+        const cornerPts = [];
         for(let k=0; k<4; k++){
           const px = approx.data32S[k*2];
           const py = approx.data32S[k*2+1];
+          cornerPts.push({x:px, y:py});
           if(px <= edgeMargin || py <= edgeMargin ||
              px >= procCanvas.width - edgeMargin || py >= procCanvas.height - edgeMargin){
             touchesEdge = true; break;
           }
         }
-        // touchesEdge bo'lsa — hujjat kadrdan chetga chiqib ketgan/kesilgan degani, rad etamiz
-        if(!touchesEdge && area > imgArea*0.18 && area > bestArea && cv.isContourConvex(approx)){
+        // touchesEdge: hujjat kadrdan chiqib/kesilib turibdi — rad etamiz
+        // area juda kichik: uzoqdagi tasodifiy shakl — rad etamiz
+        // area juda katta (>94%): butun kadrni (stol bilan) qamrab olgan — rad etamiz
+        // isRectangleLike: burchaklar ~90° bo'lmasa (stol qirrasi, soya) — rad etamiz
+        const areaOk = area > imgArea*0.08 && area < imgArea*0.97;
+        if(!touchesEdge && areaOk && area > bestArea &&
+           cv.isContourConvex(approx) && isRectangleLike(cornerPts)){
           bestArea = area;
           if(best) best.delete();
           best = approx;
@@ -390,7 +418,7 @@
     lastQuad = quad;
     drawOverlay(quad);
 
-    const SHARPNESS_THRESHOLD = 18; // proc-canvas (320px) uchun sozlangan
+    const SHARPNESS_THRESHOLD = 8; // yumshatildi — tez va oson topsin
     const isSharp = sharpness >= SHARPNESS_THRESHOLD;
 
     if(quad && isSharp){
@@ -411,7 +439,17 @@
     }
   }
 
-  function warpAndShow(quad){
+  function insetQuad(quad, factor){
+    const cx = (quad[0].x+quad[1].x+quad[2].x+quad[3].x)/4;
+    const cy = (quad[0].y+quad[1].y+quad[2].y+quad[3].y)/4;
+    return quad.map(p => ({
+      x: p.x + (cx - p.x) * factor,
+      y: p.y + (cy - p.y) * factor
+    }));
+  }
+
+  function warpAndShow(rawQuad){
+    const quad = insetQuad(rawQuad, 0); // foydalanuvchi so'rovi bo'yicha ichkariga surish o'chirildi
     const fctx = fullCanvas.getContext('2d');
     fctx.drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
 
@@ -444,17 +482,16 @@
 
   function capture(){
     if(busyCapturing) return;
+    if(!lastQuad){
+      // Hujjat topilmagan — hech narsa tushirmaymiz, stol/fon bilan birga olib qolmaslik uchun
+      statusPill.textContent = 'Topilmadi — yaqinroq tuting';
+      return;
+    }
     busyCapturing = true;
     flashEl.classList.add('go');
     setTimeout(() => flashEl.classList.remove('go'), 350);
 
-    let quad = lastQuad;
-    if(!quad){
-      // fallback: use full frame as-is if no document detected
-      const w = video.videoWidth, h = video.videoHeight;
-      quad = [{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
-    }
-    warpAndShow(quad);
+    warpAndShow(lastQuad);
     resultScreen.classList.add('show');
     // busyCapturing "Qayta olish" bosilmaguncha true bo'lib qoladi —
     // shu tufayli orqa fonda qayta-qayta suratga olib ketmaydi.

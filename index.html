@@ -150,7 +150,7 @@
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
     </div>
-    <div id="hint">Hujjatni butunlay kadr ichiga joylashtiring — fon avtomatik kesib tashlanadi</div>
+    <div id="hint">Hujjatni kadr ichiga joylashtiring — tiniq bo'lgan zahoti avtomatik suratga oladi</div>
   </div>
 
   <footer>
@@ -204,7 +204,7 @@
   let lastQuad = null;        // 4 points in full-res video coordinates
   let stableCount = 0;
   let lastStableQuad = null;
-  let autoCapture = false;
+  let autoCapture = true;
   let rafId = null;
   let busyCapturing = false;
 
@@ -247,6 +247,9 @@
       permScreen.style.display = 'flex';
     }
   }
+
+  autoBtn.classList.add('on');
+  shutterBtn.classList.add('autoArmed');
 
   retryPermBtn.addEventListener('click', () => {
     permScreen.style.display = 'none';
